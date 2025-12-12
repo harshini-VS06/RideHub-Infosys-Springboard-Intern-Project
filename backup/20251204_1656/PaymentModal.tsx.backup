@@ -1,0 +1,482 @@
+import React, { useState, useEffect } from 'react';
+import { CreditCard, Loader2, CheckCircle, XCircle, IndianRupee, Users, Calendar, MapPin, AlertCircle } from 'lucide-react';
+import { Button } from './ui/button';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from './ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import { Separator } from './ui/separator';
+import { paymentService, PaymentOrderResponse } from '../services/paymentService';
+import { toast } from 'sonner';
+
+interface PaymentModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  booking: any;
+  onPaymentSuccess: () => void;
+}
+
+const PaymentModal: React.FC<PaymentModalProps> = ({
+  isOpen,
+  onClose,
+  booking,
+  onPaymentSuccess,
+}) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+  const [razorpayError, setRazorpayError] = useState(false);
+
+  console.log('═══════════════════════════════════════');
+  console.log('PaymentModal RENDER');
+  console.log('isOpen:', isOpen);
+  console.log('booking:', booking);
+  console.log('razorpayLoaded:', razorpayLoaded);
+  console.log('isProcessing:', isProcessing);
+  console.log('═══════════════════════════════════════');
+
+  // Check if Razorpay is loaded
+  useEffect(() => {
+    let retryCount = 0;
+    const maxRetries = 50;
+    let timeoutId: NodeJS.Timeout;
+
+    const checkRazorpay = () => {
+      if ((window as any).Razorpay) {
+        console.log('✅ Razorpay SDK loaded successfully');
+        console.log('✅ Razorpay type:', typeof (window as any).Razorpay);
+        setRazorpayLoaded(true);
+        setRazorpayError(false);
+      } else {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          timeoutId = setTimeout(checkRazorpay, 100);
+        } else {
+          console.error('❌ Failed to load Razorpay SDK');
+          setRazorpayError(true);
+          toast.error('Payment System Error', {
+            description: 'Failed to load payment gateway. Please refresh the page.',
+          });
+        }
+      }
+    };
+    
+    checkRazorpay();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+
+  // Add global error handler to catch any uncaught errors
+  useEffect(() => {
+    const errorHandler = (event: ErrorEvent) => {
+      console.error('🔥 GLOBAL ERROR CAUGHT:', event.error);
+      console.error('🔥 Error message:', event.message);
+      console.error('🔥 Error filename:', event.filename);
+      console.error('🔥 Error lineno:', event.lineno);
+    };
+    
+    const rejectionHandler = (event: PromiseRejectionEvent) => {
+      console.error('🔥 UNHANDLED PROMISE REJECTION:', event.reason);
+    };
+
+    window.addEventListener('error', errorHandler);
+    window.addEventListener('unhandledrejection', rejectionHandler);
+
+    return () => {
+      window.removeEventListener('error', errorHandler);
+      window.removeEventListener('unhandledrejection', rejectionHandler);
+    };
+  }, []);
+
+  const handlePayClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('═══════════════════════════════════════');
+    console.log('🎯 PAY BUTTON CLICKED!!!');
+    console.log('═══════════════════════════════════════');
+    console.log('Event:', e);
+    console.log('Current State:', {
+      razorpayLoaded,
+      razorpayError,
+      isProcessing,
+      paymentStatus,
+      bookingId: booking?.id,
+      bookingPrice: booking?.finalPrice
+    });
+    console.log('Razorpay available:', !!(window as any).Razorpay);
+    console.log('Button disabled?:', !razorpayLoaded || razorpayError || isProcessing || paymentStatus === 'success');
+    console.log('═══════════════════════════════════════');
+    console.log('🔥 CALLING initiatePayment() NOW...');
+    
+    // Call without await to avoid any async issues
+    initiatePayment().catch(err => {
+      console.error('🔥 CAUGHT ERROR IN handlePayClick:', err);
+    });
+    
+    console.log('🔥 initiatePayment() called (async)');
+  };
+
+  const initiatePayment = async () => {
+    try {
+      console.log('🚀 Starting payment initiation...');
+      
+      // Pre-flight checks
+      if (!razorpayLoaded) {
+        const error = 'Payment system is still loading. Please wait.';
+        console.error('❌', error);
+        toast.error('Payment Error', { description: error });
+        throw new Error(error);
+      }
+
+      if (!booking || !booking.id) {
+        const error = 'Invalid booking information.';
+        console.error('❌', error);
+        toast.error('Payment Error', { description: error });
+        throw new Error(error);
+      }
+
+      if (!(window as any).Razorpay) {
+        const error = 'Razorpay not available. Please refresh the page.';
+        console.error('❌', error);
+        toast.error('Payment Error', { description: error });
+        throw new Error(error);
+      }
+
+      console.log('✅ All pre-flight checks passed');
+      
+      setIsProcessing(true);
+      setPaymentStatus('processing');
+      setErrorMessage('');
+
+      console.log('📡 Creating payment order for booking:', booking.id);
+
+      // Create payment order
+      const paymentOrder: PaymentOrderResponse = await paymentService.createPaymentOrder(booking.id);
+      
+      console.log('✅ Payment order created:', paymentOrder);
+
+      // Initiate Razorpay payment immediately (synchronously)
+      console.log('🎯 Opening Razorpay modal NOW...');
+      
+      // Open Razorpay in the same execution context to avoid popup blockers
+      paymentService.initiateRazorpayPayment(
+        paymentOrder,
+        async (response) => {
+          console.log('✅ Payment successful!', response);
+          
+          try {
+            await paymentService.verifyPayment({
+              bookingId: booking.id,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            });
+
+            console.log('✅ Payment verified!');
+            setPaymentStatus('success');
+            toast.success('Payment Successful!', {
+              description: `Booking #${booking.id} confirmed!`,
+            });
+
+            setTimeout(() => {
+              onPaymentSuccess();
+              onClose();
+            }, 2000);
+          } catch (error: any) {
+            console.error('❌ Verification error:', error);
+            setPaymentStatus('failed');
+            setErrorMessage(error.message || 'Verification failed');
+            toast.error('Payment Verification Failed', {
+              description: error.message,
+            });
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        (error) => {
+          console.error('❌ Payment error:', error);
+          setPaymentStatus('failed');
+          setErrorMessage(error.message || 'Payment failed');
+          setIsProcessing(false);
+          
+          toast.error('Payment Failed', {
+            description: error.message,
+          });
+        }
+      );
+      
+      console.log('✅ Razorpay initiation completed');
+    } catch (error: any) {
+      console.error('❌ Initiation error:', error);
+      setPaymentStatus('failed');
+      setErrorMessage(error.message || 'Failed to initiate payment');
+      setIsProcessing(false);
+      
+      toast.error('Payment Initiation Failed', {
+        description: error.message,
+      });
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  const formatTime = (timeString: string) => {
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  if (!booking) {
+    console.log('❌ No booking data, returning null');
+    return null;
+  }
+
+  const isButtonDisabled = !razorpayLoaded || razorpayError || isProcessing || paymentStatus === 'success';
+  
+  console.log('Button state:', {
+    isButtonDisabled,
+    razorpayLoaded,
+    razorpayError,
+    isProcessing,
+    paymentStatus
+  });
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Complete Payment
+          </DialogTitle>
+          <DialogDescription>
+            Review your booking details and complete payment
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Razorpay Loading Check */}
+          {!razorpayLoaded && !razorpayError && (
+            <div className="flex items-center gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <Loader2 className="h-5 w-5 animate-spin text-yellow-600" />
+              <div>
+                <p className="font-medium text-yellow-900">Loading Payment System...</p>
+                <p className="text-sm text-yellow-700">Please wait...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Razorpay Load Error */}
+          {razorpayError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-red-900">Payment System Error</p>
+                  <p className="text-sm text-red-700 mt-1">Failed to load payment gateway.</p>
+                  <Button
+                    onClick={() => window.location.reload()}
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                  >
+                    Refresh Page
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ride Details */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Ride Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-start gap-2">
+                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium">{booking?.source || 'N/A'}</p>
+                  <p className="text-xs text-muted-foreground">to {booking?.destination || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <p>
+                  {booking?.rideDate ? formatDate(booking.rideDate) : 'N/A'} at {booking?.rideTime ? formatTime(booking.rideTime) : 'N/A'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <p>{booking?.seatsBooked || 0} seat(s) booked</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Price Breakdown */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Price Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Trip Cost</span>
+                <span>₹{booking?.totalTripCost?.toFixed(2) || '0.00'}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Passengers</span>
+                <span>{booking?.totalBookedSeats || 1}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Per Seat Rate</span>
+                <span>₹{booking?.finalSeatRate?.toFixed(2) || '0.00'}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Your Seats</span>
+                <span>× {booking?.seatsBooked || 0}</span>
+              </div>
+
+              <Separator className="my-2" />
+
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-base">Final Amount</span>
+                <div className="flex items-center gap-1">
+                  <IndianRupee className="h-4 w-4" />
+                  <span className="text-xl font-bold text-primary">
+                    {booking?.finalPrice?.toFixed(2) || '0.00'}
+                  </span>
+                </div>
+              </div>
+
+              {booking?.maximumPrice && booking?.finalPrice && booking.finalPrice < booking.maximumPrice && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-2 mt-2">
+                  <p className="text-xs text-green-700">
+                    🎉 You're saving ₹{(booking.maximumPrice - booking.finalPrice).toFixed(2)}!
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Payment Status */}
+          {paymentStatus === 'processing' && (
+            <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              <div>
+                <p className="font-medium text-blue-900">Processing Payment...</p>
+                <p className="text-sm text-blue-700">Complete payment in Razorpay window</p>
+              </div>
+            </div>
+          )}
+
+          {paymentStatus === 'success' && (
+            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <div>
+                <p className="font-medium text-green-900">Payment Successful!</p>
+                <p className="text-sm text-green-700">Booking confirmed!</p>
+              </div>
+            </div>
+          )}
+
+          {paymentStatus === 'failed' && (
+            <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <XCircle className="h-5 w-5 text-red-600" />
+              <div>
+                <p className="font-medium text-red-900">Payment Failed</p>
+                <p className="text-sm text-red-700">{errorMessage}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Important Note */}
+          <Card className="bg-amber-50 border-amber-200">
+            <CardContent className="pt-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800">
+                  <strong>Important:</strong> Payment will be credited to driver's wallet after completion.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <DialogFooter className="flex gap-2">
+          <button
+            onClick={() => {
+              console.log('🔴 Cancel button clicked');
+              onClose();
+            }}
+            disabled={isProcessing}
+            type="button"
+            className="px-4 py-2 border rounded-lg"
+          >
+            Cancel
+          </button>
+          <Button
+            onClick={handlePayClick}
+            disabled={isButtonDisabled}
+            type="button"
+            className="min-w-[120px] flex items-center justify-center gap-2"
+            style={{
+              backgroundColor: isButtonDisabled ? undefined : '#10B981',
+              pointerEvents: 'auto'
+            }}
+          >
+            {razorpayError ? (
+              <>
+                <XCircle className="h-4 w-4" />
+                Payment Unavailable
+              </>
+            ) : !razorpayLoaded ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : isProcessing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4" />
+                Pay ₹{booking?.finalPrice?.toFixed(2) || '0.00'}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default PaymentModal;

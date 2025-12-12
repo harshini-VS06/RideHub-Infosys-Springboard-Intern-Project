@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RideHub - Ride Sharing Platform</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    
+    <!-- Load Razorpay SDK BEFORE React app -->
+    <script>
+      console.log('🔍 Loading Razorpay SDK...');
+      
+      // Create script element
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = false; // Load synchronously
+      
+      script.onload = function() {
+        console.log('✅ Razorpay script loaded successfully!');
+        console.log('✅ window.Razorpay type:', typeof window.Razorpay);
+        console.log('✅ Razorpay object:', window.Razorpay);
+      };
+      
+      script.onerror = function(error) {
+        console.error('❌ FAILED to load Razorpay script!');
+        console.error('Error:', error);
+        console.error('This could be due to:');
+        console.error('1. Ad blocker blocking the script');
+        console.error('2. Network/firewall blocking Razorpay CDN');
+        console.error('3. Internet connection issue');
+        alert('Failed to load payment system. Please disable ad blockers and refresh the page.');
+      };
+      
+      // Append to head
+      document.head.appendChild(script);
+      
+      // Also check after 2 seconds
+      setTimeout(() => {
+        if (!window.Razorpay) {
+          console.error('❌ Razorpay still not loaded after 2 seconds!');
+          console.error('📋 Troubleshooting:');
+          console.error('1. Check if ad blocker is enabled - DISABLE IT');
+          console.error('2. Check browser console for errors');
+          console.error('3. Check Network tab for failed requests');
+          console.error('4. Try opening https://checkout.razorpay.com/v1/checkout.js directly');
+        } else {
+          console.log('✅ Final check: Razorpay is loaded and ready!');
+        }
+      }, 2000);
+    </script>
+    
+    <!-- Load React app -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razorpay Test</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            padding: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+        .log-info { color: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Razorpay Integration Test</h1>
+        
+        <div id="status" class="status info">
+            ⏳ Checking Razorpay SDK...
+        </div>
+        
+        <div>
+            <h3>Test Actions:</h3>
+            <button id="checkBtn" onclick="checkRazorpay()">Check Razorpay Status</button>
+            <button id="testBtn" onclick="testRazorpayModal()" disabled>Open Test Payment</button>
+            <button onclick="clearLogs()">Clear Logs</button>
+        </div>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const TEST_KEY = 'rzp_test_Rn8phct44H2kME';
+        const logs = [];
+        
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = {
+                time: timestamp,
+                message: message,
+                type: type
+            };
+            logs.push(logEntry);
+            
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        function updateStatus(message, isSuccess) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${isSuccess ? 'success' : 'error'}`;
+        }
+        
+        function clearLogs() {
+            document.getElementById('log').innerHTML = '';
+            logs.length = 0;
+            addLog('Logs cleared', 'info');
+        }
+        
+        function checkRazorpay() {
+            addLog('Starting Razorpay check...', 'info');
+            
+            // Check if window.Razorpay exists
+            if (typeof window.Razorpay === 'undefined') {
+                addLog('❌ window.Razorpay is undefined', 'error');
+                updateStatus('❌ Razorpay SDK not loaded', false);
+                document.getElementById('testBtn').disabled = true;
+                return false;
+            }
+            
+            addLog('✅ window.Razorpay exists', 'success');
+            
+            // Check if it's a function
+            if (typeof window.Razorpay !== 'function') {
+                addLog(`❌ window.Razorpay is not a function (type: ${typeof window.Razorpay})`, 'error');
+                updateStatus('❌ Razorpay SDK corrupted', false);
+                document.getElementById('testBtn').disabled = true;
+                return false;
+            }
+            
+            addLog('✅ window.Razorpay is a function', 'success');
+            
+            // Try to create a test instance
+            try {
+                const testOptions = {
+                    key: TEST_KEY,
+                    amount: 100,
+                    currency: 'INR',
+                    name: 'Test',
+                    description: 'Test Payment',
+                    handler: function() {}
+                };
+                
+                const testInstance = new window.Razorpay(testOptions);
+                addLog('✅ Test Razorpay instance created successfully', 'success');
+                addLog(`✅ Instance has open method: ${typeof testInstance.open === 'function'}`, 'success');
+                addLog(`✅ Instance has on method: ${typeof testInstance.on === 'function'}`, 'success');
+                
+                updateStatus('✅ Razorpay SDK loaded and functional', true);
+                document.getElementById('testBtn').disabled = false;
+                return true;
+            } catch (error) {
+                addLog(`❌ Failed to create Razorpay instance: ${error.message}`, 'error');
+                updateStatus('❌ Razorpay SDK error', false);
+                document.getElementById('testBtn').disabled = true;
+                return false;
+            }
+        }
+        
+        function testRazorpayModal() {
+            addLog('Opening test Razorpay modal...', 'info');
+            
+            const options = {
+                key: TEST_KEY,
+                amount: 10000, // 100 INR in paise
+                currency: 'INR',
+                name: 'RideHub Test',
+                description: 'Test Payment for Razorpay Integration',
+                handler: function (response) {
+                    addLog('✅ Payment Success!', 'success');
+                    addLog(`Payment ID: ${response.razorpay_payment_id}`, 'success');
+                    addLog(`Order ID: ${response.razorpay_order_id}`, 'success');
+                    addLog(`Signature: ${response.razorpay_signature}`, 'success');
+                    updateStatus('✅ Test payment completed', true);
+                },
+                prefill: {
+                    name: 'Test User',
+                    email: 'test@example.com',
+                    contact: '9999999999'
+                },
+                theme: {
+                    color: '#10B981'
+                },
+                modal: {
+                    ondismiss: function() {
+                        addLog('⚠️ Payment modal dismissed', 'info');
+                        updateStatus('⚠️ Payment cancelled', false);
+                    }
+                }
+            };
+            
+            try {
+                addLog('Creating Razorpay instance with options...', 'info');
+                const rzp = new window.Razorpay(options);
+                
+                addLog('Setting up payment.failed handler...', 'info');
+                rzp.on('payment.failed', function (response) {
+                    addLog('❌ Payment failed!', 'error');
+                    addLog(`Error: ${response.error.description}`, 'error');
+                    addLog(`Reason: ${response.error.reason}`, 'error');
+                    updateStatus('❌ Payment failed', false);
+                });
+                
+                addLog('Calling rzp.open()...', 'info');
+                rzp.open();
+                addLog('✅ Modal opened successfully!', 'success');
+                
+            } catch (error) {
+                addLog(`❌ Error opening modal: ${error.message}`, 'error');
+                addLog(`Stack: ${error.stack}`, 'error');
+                updateStatus('❌ Failed to open modal', false);
+            }
+        }
+        
+        // Run check on page load
+        window.addEventListener('load', function() {
+            addLog('Page loaded', 'info');
+            addLog('Waiting 1 second for Razorpay SDK...', 'info');
+            
+            setTimeout(function() {
+                addLog('Running automatic Razorpay check...', 'info');
+                checkRazorpay();
+            }, 1000);
+        });
+        
+        // Log script load events
+        window.addEventListener('error', function(event) {
+            if (event.filename && event.filename.includes('razorpay')) {
+                addLog(`❌ Razorpay script error: ${event.message}`, 'error');
+            }
+        });
+    </script>
+</body>
+</html>
